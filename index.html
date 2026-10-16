@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filter Frequency Response Simulator</title>
+    <style>
+        /* Coursera-inspired Academic UI */
+        :root {
+            --primary-blue: #0056D2;
+            --primary-hover: #00419e;
+            --bg-page: #FFFFFF;
+            --bg-panel: #F5F7FA;
+            --text-main: #1F2431;
+            --text-muted: #63636B;
+            --border-color: #E2E6EA;
+            --focus-ring: rgba(0, 86, 210, 0.4);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: var(--text-main);
+            background-color: var(--bg-page);
+            line-height: 1.5;
+            padding: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .simulator-container {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .description {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        canvas {
+            background: var(--bg-page);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            width: 100%;
+            height: 250px;
+            margin-bottom: 1.5rem;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 1rem;
+        }
+
+        label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .value-display {
+            font-weight: 400;
+            color: var(--primary-blue);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 0.5rem 0;
+            cursor: pointer;
+        }
+
+        input[type="range"]:focus {
+            outline: 2px solid var(--primary-blue);
+            outline-offset: 2px;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .radio-label {
+            font-weight: 400;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .radio-label input {
+            margin-right: 0.5rem;
+        }
+
+        .radio-label input:focus {
+            outline: 2px solid var(--primary-blue);
+            outline-offset: 2px;
+        }
+
+        .btn-play {
+            background-color: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-bottom: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-play:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-play:focus {
+            outline: 3px solid var(--focus-ring);
+            outline-offset: 2px;
+        }
+
+        /* Screen reader only utility class */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        @media (max-width: 600px) {
+            .controls-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <main class="simulator-container" aria-labelledby="sim-title">
+        <h2 id="sim-title">Filter Response & Synthesizer Simulator</h2>
+        <p class="description">Listen to how different filter types shape a rich sawtooth waveform. Adjust the cutoff frequency and resonance (Q) to visually and audibly sculpt the sound.</p>
+
+        <!-- Live region for screen readers to announce changes silently to sighted users -->
+        <div id="aria-live-feedback" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+        <button id="toggle-audio" class="btn-play" aria-pressed="false">
+            <span id="play-icon">▶</span> <span id="play-text">Start Audio Engine</span>
+        </button>
+
+        <canvas id="bode-plot" width="800" height="250" aria-label="Bode plot displaying the real-time frequency response curve of the selected filter."></canvas>
+
+        <div class="controls-grid">
+            <div class="left-col">
+                <fieldset class="control-group" style="border: none; padding: 0; margin-bottom: 1.5rem;">
+                    <legend style="font-weight: 600; margin-bottom: 0.5rem;">Filter Type</legend>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="filter-type" value="lowpass" checked aria-describedby="aria-live-feedback"> Low-Pass
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="filter-type" value="highpass"> High-Pass
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="filter-type" value="bandpass"> Band-Pass
+                        </label>
+                    </div>
+                </fieldset>
+            </div>
+
+            <div class="right-col">
+                <div class="control-group">
+                    <label for="cutoff-slider">
+                        Cutoff Frequency 
+                        <span class="value-display" id="cutoff-display" aria-hidden="true">1000 Hz</span>
+                    </label>
+                    <input type="range" id="cutoff-slider" min="20" max="20000" step="1" value="1000" 
+                           aria-valuemin="20" aria-valuemax="20000" aria-valuenow="1000" aria-valuetext="1000 Hertz">
+                </div>
+
+                <div class="control-group">
+                    <label for="q-slider">
+                        Resonance (Q) 
+                        <span class="value-display" id="q-display" aria-hidden="true">1.0</span>
+                    </label>
+                    <input type="range" id="q-slider" min="0.1" max="20" step="0.1" value="1.0" 
+                           aria-valuemin="0.1" aria-valuemax="20" aria-valuenow="1.0">
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // UI Elements
+        const toggleAudioBtn = document.getElementById('toggle-audio');
+        const playIcon = document.getElementById('play-icon');
+        const playText = document.getElementById('play-text');
+        const filterTypeRadios = document.querySelectorAll('input[name="filter-type"]');
+        const cutoffSlider = document.getElementById('cutoff-slider');
+        const qSlider = document.getElementById('q-slider');
+        const cutoffDisplay = document.getElementById('cutoff-display');
+        const qDisplay = document.getElementById('q-display');
+        const ariaLiveFeedback = document.getElementById('aria-live-feedback');
+        
+        // Canvas Setup
+        const canvas = document.getElementById('bode-plot');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Audio Engine Variables
+        let audioCtx;
+        let oscillator;
+        let filter;
+        let gainNode;
+        let isPlaying = false;
+
+        // Map linear slider to logarithmic frequency scale (better audio UX)
+        // We use the slider 20-20000 but interpret its position logarithmically
+        function updateFilter() {
+            const cutoff = parseFloat(cutoffSlider.value);
+            const qValue = parseFloat(qSlider.value);
+            
+            // Update labels
+            cutoffDisplay.textContent = `${cutoff} Hz`;
+            qDisplay.textContent = qValue.toFixed(1);
+            
+            // Update ARIA attributes for accessibility
+            cutoffSlider.setAttribute('aria-valuenow', cutoff);
+            cutoffSlider.setAttribute('aria-valuetext', `${cutoff} Hertz`);
+            qSlider.setAttribute('aria-valuenow', qValue);
+
+            // Update audio nodes if running
+            if (filter) {
+                filter.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.05);
+                filter.Q.setTargetAtTime(qValue, audioCtx.currentTime, 0.05);
+            }
+
+            drawFrequencyResponse();
+        }
+
+        // Screen Reader Debounce Announcer
+        let announcementTimeout;
+        function announceState(message) {
+            clearTimeout(announcementTimeout);
+            announcementTimeout = setTimeout(() => {
+                ariaLiveFeedback.textContent = message;
+            }, 500); // Wait 500ms after user stops moving slider to announce
+        }
+
+        // Initialize Audio
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            oscillator = audioCtx.createOscillator();
+            oscillator.type = 'sawtooth'; // Rich in harmonics, perfect for filtering
+            oscillator.frequency.value = 110; // A2 note
+            
+            filter = audioCtx.createBiquadFilter();
+            filter.type = document.querySelector('input[name="filter-type"]:checked').value;
+            filter.frequency.value = parseFloat(cutoffSlider.value);
+            filter.Q.value = parseFloat(qSlider.value);
+            
+            gainNode = audioCtx.createGain();
+            gainNode.gain.value = 0.2; // Keep volume reasonable
+            
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+            isPlaying = true;
+            
+            toggleAudioBtn.setAttribute('aria-pressed', 'true');
+            playIcon.textContent = '⏸';
+            playText.textContent = 'Stop Audio Engine';
+            ariaLiveFeedback.textContent = "Audio engine started. Sawtooth wave playing.";
+        }
+
+        function stopAudio() {
+            if (oscillator) {
+                oscillator.stop();
+                oscillator.disconnect();
+                filter.disconnect();
+                gainNode.disconnect();
+            }
+            isPlaying = false;
+            toggleAudioBtn.setAttribute('aria-pressed', 'false');
+            playIcon.textContent = '▶';
+            playText.textContent = 'Start Audio Engine';
+            ariaLiveFeedback.textContent = "Audio engine stopped.";
+        }
+
+        // Event Listeners
+        toggleAudioBtn.addEventListener('click', () => {
+            if (!isPlaying) {
+                initAudio();
+            } else {
+                stopAudio();
+            }
+        });
+
+        filterTypeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (filter) filter.type = e.target.value;
+                announceState(`${e.target.value} filter selected.`);
+                drawFrequencyResponse();
+            });
+        });
+
+        cutoffSlider.addEventListener('input', () => {
+            updateFilter();
+            announceState(`Cutoff frequency set to ${cutoffSlider.value} Hertz.`);
+        });
+
+        qSlider.addEventListener('input', () => {
+            updateFilter();
+            announceState(`Resonance Q set to ${qSlider.value}.`);
+        });
+
+        // Drawing the Bode Plot (Visual representation of the filter)
+        function drawFrequencyResponse() {
+            if (!audioCtx) {
+                // If audio context not initialized yet, create a dummy one just for math
+                const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);
+                filter = offlineCtx.createBiquadFilter();
+                filter.type = document.querySelector('input[name="filter-type"]:checked').value;
+                filter.frequency.value = parseFloat(cutoffSlider.value);
+                filter.Q.value = parseFloat(qSlider.value);
+            }
+
+            const freqArray = new Float32Array(width);
+            const magResponse = new Float32Array(width);
+            const phaseResponse = new Float32Array(width);
+
+            // Create a logarithmic array of frequencies to graph (20Hz to 20kHz)
+            const minFreq = 20;
+            const maxFreq = 20000;
+            for (let i = 0; i < width; i++) {
+                freqArray[i] = minFreq * Math.pow(maxFreq / minFreq, i / width);
+            }
+
+            filter.getFrequencyResponse(freqArray, magResponse, phaseResponse);
+
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw grid
+            ctx.strokeStyle = '#E2E6EA';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            // Horizontal lines (decibels)
+            for (let i = 0; i <= 4; i++) {
+                ctx.moveTo(0, i * (height / 4));
+                ctx.lineTo(width, i * (height / 4));
+            }
+            // Vertical lines (frequency decades roughly)
+            [100, 1000, 10000].forEach(freq => {
+                const x = width * Math.log(freq / minFreq) / Math.log(maxFreq / minFreq);
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.fillStyle = '#63636B';
+                ctx.font = '12px sans-serif';
+                ctx.fillText(freq >= 1000 ? (freq/1000)+'kHz' : freq+'Hz', x + 5, height - 10);
+            });
+            ctx.stroke();
+
+            // Draw response curve
+            ctx.beginPath();
+            ctx.strokeStyle = '#0056D2';
+            ctx.lineWidth = 3;
+            
+            for (let i = 0; i < width; i++) {
+                // Convert linear magnitude to dB for graphing
+                let mag = magResponse[i];
+                let dbResponse = 20 * Math.log10(mag || 0.00001);
+                
+                // Map +20dB to -40dB scale to Y pixel coordinates
+                const maxDb = 20;
+                const minDb = -40;
+                const y = height - ((dbResponse - minDb) / (maxDb - minDb)) * height;
+                
+                if (i === 0) ctx.moveTo(i, y);
+                else ctx.lineTo(i, y);
+            }
+            ctx.stroke();
+
+            // Fill area under curve
+            ctx.lineTo(width, height);
+            ctx.lineTo(0, height);
+            ctx.fillStyle = 'rgba(0, 86, 210, 0.1)';
+            ctx.fill();
+        }
+
+        // Initial draw
+        drawFrequencyResponse();
+    </script>
+</body>
+</html>
